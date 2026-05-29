@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IMU Hand Viewer</title>
+    <style>
+        body { margin: 0; background: #1a1a2e; }
+        canvas { display: block; }
+        #status {
+            position: absolute; top: 10px; left: 10px;
+            color: white; font-family: monospace; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+<div id="status">Connecting...</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(1, 2, 3);
+    scene.add(dirLight);
+
+    camera.position.z = 200;
+
+    let handMesh = null;
+    const loader = new THREE.STLLoader();
+    loader.load("haandflate.stl", (geometry) => {
+        geometry.computeVertexNormals();
+        geometry.center();
+        const material = new THREE.MeshPhongMaterial({
+            color: 0xe8c49a,
+            specular: 0x222222,
+            shininess: 30
+        });
+        handMesh = new THREE.Mesh(geometry, material);
+        scene.add(handMesh);
+        document.getElementById("status").textContent = "Model loaded — waiting for IMU...";
+    });
+
+    let targetQuaternion = new THREE.Quaternion();
+    const currentQuaternion = new THREE.Quaternion();
+
+    const ws = new WebSocket("ws://localhost:8765");
+    ws.onopen  = () => document.getElementById("status").textContent = "Connected to IMU";
+    ws.onclose = () => document.getElementById("status").textContent = " Disconnected";
+    ws.onmessage = (event) => {
+        const q = JSON.parse(event.data);
+        targetQuaternion.set(q.x, q.y, q.z, q.w);
+    };
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if (handMesh) {
+            currentQuaternion.slerp(targetQuaternion, 0.1);
+            handMesh.quaternion.copy(currentQuaternion);
+        }
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
